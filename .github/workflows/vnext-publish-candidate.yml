@@ -5,8 +5,8 @@ on:
     branches: [main]
     paths: ['.github/workflows/vnext-publish-candidate.yml']
   schedule:
-    - cron: '15 8 * * *'
-    - cron: '15 20 * * *'
+    - cron: '45 3 * * *'
+    - cron: '45 15 * * *'
   workflow_dispatch:
 
 permissions:
