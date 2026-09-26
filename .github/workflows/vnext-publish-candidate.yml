@@ -1,12 +1,14 @@
-name: vNext · Candidato Pages · ECMWF moisture · 340 mapas
+name: vNext · ECMWF moisture · ciclo más reciente 00/06/12/18
 
 on:
   push:
     branches: [main]
     paths: ['.github/workflows/vnext-publish-candidate.yml']
   schedule:
-    - cron: '45 3 * * *'
-    - cron: '45 15 * * *'
+    - cron: '0 1 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 13 * * *'
+    - cron: '0 20 * * *'
   workflow_dispatch:
 
 permissions:
@@ -55,17 +57,22 @@ jobs:
           python -m py_compile scripts/vnext_gfs_preflight.py
           python -m py_compile scripts/vnext_current_guard.py
 
+      - name: Elegir ciclo ECMWF más reciente · 00/12 largo · 06/18 rápido
+        working-directory: backend
+        run: python scripts/vnext_ecmwf_generate.py prepare
+
       - id: cycle
-        name: Sincronizar ciclo con ECMWF surface
+        name: Exportar ciclo
+        working-directory: backend
         shell: bash
         run: |
           set -euo pipefail
-          CYCLE=$(python -c "import json,urllib.request as u; d=json.load(u.urlopen('https://parronpintojosemaria-arch.github.io/meteorologia-mapas-ecmwf-surface/current.json',timeout=30)); assert d.get('status')=='ready',d; assert d.get('model')=='ecmwf-surface',d; assert int(d.get('file_count',0))==1472,d; c=d.get('cycle'); assert isinstance(c,str) and c,d; print(c)")
+          CYCLE=$(python -c "import json;print(json.load(open('vnext-full-out/ecmwf/prep.json'))['cycle'])")
           echo "cycle=$CYCLE" >> "$GITHUB_OUTPUT"
           echo "CYCLE=$CYCLE" >> "$GITHUB_ENV"
-          echo "ECMWF moisture sincronizado con surface: $CYCLE"
+          echo "ECMWF moisture ciclo seleccionado: $CYCLE"
 
-      - name: Generar 340 mapas IVT + TCWV · España 2400 · Europa 2800
+      - name: Generar IVT + TCWV · horizonte dinámico
         working-directory: backend
         timeout-minutes: 330
         run: python scripts/vnext_moisture_generate.py ecmwf --cycle "$CYCLE"
@@ -82,7 +89,10 @@ jobs:
           frag=root/'fragment-moisture.json'
           d=json.loads(frag.read_text(encoding='utf-8'))
           assert d['status']=='ready' and d['group']=='moisture'
-          assert d['cycle']==cycle and d['expected_count']==340 and len(d['files'])==340
+          assert d['cycle']==cycle
+          expected=int(d['expected_count'])
+          assert expected in (124,340), expected
+          assert len(d['files'])==expected
           assert set(x['product'] for x in d['files'])=={'ivt_1000_300','tcwv'}
           widths={'spain':2400,'europe':2800}; total=0
           for row in d['files']:
@@ -96,7 +106,7 @@ jobs:
           assert mib < 940.0, f'ECMWF moisture supera guard Pages: {mib:.2f} MiB'
           manifest=dict(d); manifest['schema']='vnext-ecmwf-moisture-1'; manifest['publication_role']='ecmwf-moisture-shard'
           (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          print(f'ECMWF MOISTURE SHARD OK · 340 mapas · {mib:.2f} MiB · ciclo {cycle}')
+          print(f'ECMWF MOISTURE SHARD OK · {expected} mapas · {mib:.2f} MiB · ciclo {cycle}')
           PY
 
       - name: Preparar sitio candidato
@@ -127,7 +137,8 @@ jobs:
           import json
           from pathlib import Path
           c=json.loads(Path('site/current.json').read_text())
-          assert c['status']=='ready' and c['model']=='ecmwf-moisture' and c['file_count']==340
+          assert c['status']=='ready' and c['model']=='ecmwf-moisture'
+          assert int(c['file_count']) in (124,340), c 
           assert Path('site/cycles',c['cycle'],'manifest.json').is_file()
           print('CURRENT CANDIDATO ECMWF MOISTURE OK',c['cycle'],c['file_count'])
           PY
